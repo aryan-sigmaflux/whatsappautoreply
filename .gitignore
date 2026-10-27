@@ -1,0 +1,7 @@
+.env
+.env.local
+backend/venv/
+backend/media/
+__pycache__/
+*.pyc
+screenshots/

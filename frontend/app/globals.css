@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --color-ink: #1e293b;
+  --color-ink-hover: #0f172a;
+  --color-canvas: #f8fafc;
+  --color-line: #e2e8f0;
+  --color-muted: #64748b;
+  --color-brand: #0f5132;
+  --color-brand-soft: #e7f5ee;
+  --color-wa-bg: #efeae2;
+  --color-wa-bubble: #ffffff;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: #ffffff;
+  color: #0f172a;
+}
