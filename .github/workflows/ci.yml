@@ -1,0 +1,119 @@
+# Checks every push and pull request. On main, a push that changes backend/ also
+# redeploys the API container on the VPS (the frontend deploys itself on Vercel).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Redeploy the backend even if backend/ didn't change
+        type: boolean
+        default: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx eslint .
+      - run: npx next build
+        env:
+          NEXT_PUBLIC_API_URL: https://api.webhook.sigmaflux.in
+
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: autoreply
+          POSTGRES_PASSWORD: autoreply
+          POSTGRES_DB: autoreply
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U autoreply" --health-interval 2s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t autoreply-api backend
+      # Starts the real image against an empty database: tables are created, the admin
+      # is seeded, and a login + workspace + flow round trip touches every table.
+      - name: Smoke test
+        run: |
+          docker run -d --name api --network host \
+            -e DATABASE_URL=postgresql+asyncpg://autoreply:autoreply@127.0.0.1:5432/autoreply \
+            -e SECRET_KEY=ci-secret -e ENCRYPTION_KEY=ci-encryption \
+            -e ADMIN_EMAIL=ci@example.com -e ADMIN_PASSWORD=ci-password -e PORT=8020 \
+            autoreply-api
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:8020/health && break; sleep 1; done
+          api() { curl -fsS -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' "$@"; }
+          TOKEN=$(curl -fsS http://127.0.0.1:8020/api/auth/login -H 'Content-Type: application/json' \
+            -d '{"email":"ci@example.com","password":"ci-password"}' | jq -r .access_token)
+          WS=$(api http://127.0.0.1:8020/api/workspaces -d '{"name":"CI"}' | jq -r .id)
+          FLOW=$(api http://127.0.0.1:8020/api/workspaces/$WS/flows -d '{"name":"CI flow"}' | jq -r .id)
+          api http://127.0.0.1:8020/api/workspaces/$WS/flows/$FLOW/simulate \
+            -d "$(api http://127.0.0.1:8020/api/workspaces/$WS/flows/$FLOW | jq '{graph, waiting_node_id: null, message: ""}')"
+          api http://127.0.0.1:8020/api/workspaces/$WS/triggers > /dev/null
+          echo
+          echo "Smoke test passed"
+      - name: Container log
+        if: always()
+        run: docker logs api 2>&1 | tail -50 || true
+
+  changes:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.diff.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BEFORE: ${{ github.event.before }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy }}
+        run: |
+          if [ "$FORCE" = "true" ]; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            git diff --quiet "$BEFORE" HEAD -- backend \
+              && echo "backend=false" >> "$GITHUB_OUTPUT" || echo "backend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy-backend:
+    needs: [frontend, backend, changes]
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-backend
+      cancel-in-progress: false
+    environment: production
+    steps:
+      # The key in DEPLOY_SSH_KEY is locked on the VPS to one command:
+      # git pull + backend/deploy.sh. Whatever command is sent here is ignored.
+      - name: Deploy over SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$SSH_KEY" ]; then echo "::error::Add the DEPLOY_SSH_KEY secret"; exit 1; fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          echo "185.193.19.205 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMVRNe2ec2XtbcWzVFvz8AiwqA0cuWmreg2WzvR+35WZ" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o ConnectTimeout=20 aryan@185.193.19.205 deploy
+      - name: Check the public API
+        run: curl -fsS https://api.webhook.sigmaflux.in/health

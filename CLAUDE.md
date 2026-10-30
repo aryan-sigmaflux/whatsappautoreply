@@ -136,6 +136,10 @@ Docs: https://documenter.getpostman.com/view/40451098/2sAYJ1k2VV
 
 ## Checking changes
 
+GitHub Actions (`ci.yml`) runs on every push and PR:
+- Frontend: eslint and `next build`.
+- Backend: builds the Docker image and smoke-tests it against a Postgres 16 service.
+
 - Frontend: `cd frontend && npx next build && npx eslint .`
 - UI: Playwright works for checking the canvas. Run a backend on `pgserver` plus `next dev`, and
   seed the session via localStorage key `autoreply-session` (zustand persist: `{state:{token,user,workspaceId}}`).
@@ -171,13 +175,14 @@ Docs: https://documenter.getpostman.com/view/40451098/2sAYJ1k2VV
 - **CORS** allows `https://webhook.sigmaflux.in` and `http://localhost:3000` (`CORS_ORIGINS`).
   Add Vercel preview URLs there if they're needed.
 - Logs: `docker logs -f autoreply-api`.
-- Redeploy the backend:
-  ```bash
-  cd ~/whatsappautoreply && git pull && cd backend && docker build -t autoreply-api . && \
-  docker rm -f autoreply-api && docker run -d --name autoreply-api --restart unless-stopped \
-    --network host --env-file ~/whatsappautoreply/backend/.env \
-    -v ~/whatsappautoreply-data/media:/data/media autoreply-api
-  ```
+- **Redeploying the backend is automatic** (`.github/workflows/ci.yml`):
+  - A push to `main` that changes `backend/` runs the checks, then SSHes in and runs `backend/deploy.sh`.
+  - `deploy.sh` rebuilds the image and restarts the container. If `/health` fails, it starts the
+    `autoreply-api:previous` image again.
+  - The `DEPLOY_SSH_KEY` secret is locked in `~/.ssh/authorized_keys` (comment
+    `autoreply-github-deploy`) to `git pull` + `deploy.sh` and can't run anything else.
+  - Run it by hand from the Actions tab ("Run workflow"), or on the VPS:
+    `cd ~/whatsappautoreply && git pull --ff-only && bash backend/deploy.sh`.
 - Add a login or reset a password:
   `docker exec -it autoreply-api python -m app.create_user EMAIL 'PASSWORD' 'Name'`
 - The frontend redeploys automatically on push to `main` (Vercel).

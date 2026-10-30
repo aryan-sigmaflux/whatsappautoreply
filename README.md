@@ -68,9 +68,10 @@ curl http://127.0.0.1:8010/health
 `--network host` lets the container reach PostgreSQL on `127.0.0.1:5432`. The API
 listens on `127.0.0.1:8010` only (change with `-e PORT=...`).
 
-Update later:
+Update later: pushes to `main` that change `backend/` redeploy automatically through GitHub
+Actions (`.github/workflows/ci.yml` → `backend/deploy.sh`). By hand on the VPS:
 ```bash
-docker build -t autoreply-api . && docker rm -f autoreply-api && <the docker run command above>
+cd ~/whatsappautoreply && git pull --ff-only && bash backend/deploy.sh
 ```
 
 ### 5. Nginx + HTTPS
