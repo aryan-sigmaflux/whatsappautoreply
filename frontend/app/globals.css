@@ -24,3 +24,21 @@ body {
   background: #ffffff;
   color: #0f172a;
 }
+
+* {
+  caret-color: #000000;
+}
+
+/* Chrome draws grab/grabbing as its own white hand instead of the system pointer,
+   so the flow canvas uses system cursors (which stay black). */
+.react-flow .react-flow__pane.draggable,
+.react-flow .react-flow__nodesselection-rect {
+  cursor: default;
+}
+.react-flow .react-flow__node.draggable {
+  cursor: pointer;
+}
+.react-flow .react-flow__pane.dragging,
+.react-flow .react-flow__node.draggable.dragging {
+  cursor: move;
+}

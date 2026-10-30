@@ -314,7 +314,7 @@ function Builder({ workspaceId, flow }: { workspaceId: string; flow: Flow }) {
                       e.dataTransfer.effectAllowed = 'move';
                     }}
                     onClick={() => addStep(item.key)}
-                    className="flex cursor-grab flex-col items-center gap-1.5 rounded-xl border border-line px-2 py-3 text-center text-xs font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50 active:cursor-grabbing"
+                    className="flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border border-line px-2 py-3 text-center text-xs font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50 active:cursor-move"
                   >
                     <span className={`flex size-8 items-center justify-center rounded-lg ${item.tint}`}>
                       <item.icon className="size-4" />
