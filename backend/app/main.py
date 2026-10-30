@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine
 from app.models import User
-from app.routers import auth, triggers, uploads, webhook, workspaces
+from app.routers import auth, flows, triggers, uploads, webhook, workspaces
 from app.security import hash_password
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -54,6 +54,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(workspaces.router)
 app.include_router(triggers.router)
+app.include_router(flows.router)
 app.include_router(uploads.router)
 app.include_router(webhook.router)
 

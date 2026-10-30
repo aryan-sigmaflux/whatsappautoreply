@@ -62,7 +62,7 @@ class Trigger(Base):
     keywords: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     # Only fire for messages whose referral source contains this (e.g. "facebook").
     source: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    # text | file | quick_reply | cta_url | list | location
+    # text | file | quick_reply | cta_url | list | location | flow
     response_type: Mapped[str] = mapped_column(String(32))
     response: Mapped[dict] = mapped_column(JSONB)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -80,6 +80,59 @@ class Trigger(Base):
 
     created_by: Mapped[User | None] = relationship(foreign_keys=[created_by_id], lazy="joined")
     updated_by: Mapped[User | None] = relationship(foreign_keys=[updated_by_id], lazy="joined")
+
+
+class Flow(Base):
+    """A conversation graph started by a trigger whose response_type is "flow".
+
+    graph = {"nodes": [{id, type, position, data}], "edges": [{id, source, sourceHandle, target}]},
+    the same shape React Flow uses. See app/services/flows.py for node types.
+    """
+
+    __tablename__ = "flows"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # active | draft — draft flows never run for customers.
+    status: Mapped[str] = mapped_column(String(16), default="draft")
+    graph: Mapped[dict] = mapped_column(JSONB)
+
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    created_by: Mapped[User | None] = relationship(foreign_keys=[created_by_id], lazy="joined")
+    updated_by: Mapped[User | None] = relationship(foreign_keys=[updated_by_id], lazy="joined")
+
+
+class FlowSession(Base):
+    """Where a contact is in a flow: the node waiting for their reply."""
+
+    __tablename__ = "flow_sessions"
+    __table_args__ = (UniqueConstraint("workspace_id", "contact"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE")
+    )
+    contact: Mapped[str] = mapped_column(String(32))
+    flow_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("flows.id", ondelete="CASCADE"))
+    node_id: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class ProcessedMessage(Base):

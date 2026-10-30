@@ -18,7 +18,7 @@ export type Workspace = {
 };
 
 export type MatchType = 'equals' | 'contains' | 'any';
-export type ResponseType = 'text' | 'file' | 'quick_reply' | 'cta_url' | 'list' | 'location';
+export type ResponseType = 'text' | 'file' | 'quick_reply' | 'cta_url' | 'list' | 'location' | 'flow';
 export type MediaType = 'image' | 'video' | 'audio' | 'document';
 
 export type Header = {
@@ -45,6 +45,7 @@ export type ListResponse = {
   sections: { title: string; rows: { id: string; title: string; description?: string }[] }[];
 };
 export type LocationResponse = { latitude: number | string; longitude: number | string; name?: string; address?: string };
+export type FlowRefResponse = { flow_id: string };
 
 export type AnyResponse =
   | TextResponse
@@ -52,7 +53,8 @@ export type AnyResponse =
   | QuickReplyResponse
   | CtaUrlResponse
   | ListResponse
-  | LocationResponse;
+  | LocationResponse
+  | FlowRefResponse;
 
 export type Trigger = {
   id: string;
@@ -72,6 +74,41 @@ export type Trigger = {
 export type TriggerInput = Omit<Trigger, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by'>;
 
 export type TryResult = { trigger: Trigger | null; matched_keyword: string | null; reason: string };
+
+// Flows — graph is stored in React Flow's own shape. See backend app/services/flows.py.
+export type FlowNodeType = 'start' | 'send' | 'buttons' | 'list' | 'question';
+export type SendType = 'text' | 'file' | 'cta_url' | 'location';
+export type QuestionCase = { id: string; match_type: 'equals' | 'contains'; keywords: string[] };
+export type FlowNodeData = {
+  response_type?: SendType; // send
+  response?: AnyResponse; // send, buttons (QuickReplyResponse), list (ListResponse)
+  body?: string; // question
+  cases?: QuestionCase[]; // question
+};
+export type FlowGraphNode = { id: string; type: FlowNodeType; position: { x: number; y: number }; data: FlowNodeData };
+export type FlowGraphEdge = { id: string; source: string; target: string; sourceHandle?: string | null };
+export type FlowGraph = { nodes: FlowGraphNode[]; edges: FlowGraphEdge[] };
+export type FlowStatus = 'active' | 'draft';
+
+export type FlowSummary = {
+  id: string;
+  name: string;
+  description: string | null;
+  status: FlowStatus;
+  node_count: number;
+  triggers: { id: string; name: string; match_type: MatchType; keywords: string[]; is_active: boolean }[];
+  created_at: string;
+  updated_at: string;
+  created_by: User | null;
+  updated_by: User | null;
+};
+export type Flow = FlowSummary & { graph: FlowGraph };
+
+export type SimulateResult = {
+  outputs: { node_id: string; response_type: ResponseType; response: AnyResponse }[];
+  waiting_node_id: string | null;
+  note: string | null;
+};
 
 // ── Fetch ──────────────────────────────────────────
 
@@ -151,6 +188,17 @@ export const endpoints = {
   tryMessage: (ws: string, body: { message: string; message_type: 'text' | 'button' | 'media'; source?: string }) =>
     api<TryResult>(`/api/workspaces/${ws}/triggers/try`, json(body)),
 
+  flows: (ws: string) => api<FlowSummary[]>(`/api/workspaces/${ws}/flows`),
+  flow: (ws: string, id: string) => api<Flow>(`/api/workspaces/${ws}/flows/${id}`),
+  createFlow: (ws: string, body: { name: string; description?: string }) =>
+    api<Flow>(`/api/workspaces/${ws}/flows`, json(body)),
+  saveFlow: (ws: string, id: string, body: { name: string; description: string | null; status: FlowStatus; graph: FlowGraph }) =>
+    api<Flow>(`/api/workspaces/${ws}/flows/${id}`, json(body, 'PUT')),
+  duplicateFlow: (ws: string, id: string) => api<Flow>(`/api/workspaces/${ws}/flows/${id}/duplicate`, { method: 'POST' }),
+  deleteFlow: (ws: string, id: string) => api<void>(`/api/workspaces/${ws}/flows/${id}`, { method: 'DELETE' }),
+  simulateFlow: (ws: string, id: string, body: { graph: FlowGraph; waiting_node_id: string | null; message: string }) =>
+    api<SimulateResult>(`/api/workspaces/${ws}/flows/${id}/simulate`, json(body)),
+
   upload: (ws: string, file: File) => {
     const form = new FormData();
     form.append('file', file);
@@ -176,7 +224,16 @@ export const RESPONSE_LABEL: Record<ResponseType, string> = {
   cta_url: 'CTA URL',
   list: 'List',
   location: 'Location',
+  flow: 'Flow',
 };
+
+export function timeAgo(iso: string): string {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
 
 export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB');

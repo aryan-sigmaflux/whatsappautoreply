@@ -4,30 +4,23 @@ pasted into that GetGabs account — the token is how we tell accounts apart,
 since GetGabs payloads carry no account id or signature.
 
 GetGabs treats anything but a quick 200 as a failure and retries, so we
-acknowledge immediately, de-duplicate on message_id, and reply in the background.
+acknowledge immediately, de-duplicate on message_id, and reply in the background
+(app/services/conversation.py decides what to send).
 """
 
 import json
-import logging
-import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from urllib.parse import parse_qs
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import SessionLocal
-from app.models import ProcessedMessage, Trigger, Workspace
-from app.security import decrypt
-from app.services import getgabs
-from app.services.matcher import extract_text, find_match
-
-log = logging.getLogger(__name__)
+from app.models import ProcessedMessage, Workspace
+from app.services import conversation
 
 router = APIRouter(tags=["webhook"])
-
-_DEDUPE_DAYS = 7
 
 
 async def _read_payload(request: Request) -> dict:
@@ -68,39 +61,5 @@ async def receive(token: str, request: Request, background: BackgroundTasks):
     if str(payload.get("direction") or "inbound").lower() != "inbound":
         return {"status": "ignored", "reason": "outbound"}
 
-    background.add_task(_reply, ws.id, payload)
+    background.add_task(conversation.handle, ws.id, payload)
     return {"status": "ok"}
-
-
-async def _reply(workspace_id: uuid.UUID, payload: dict) -> None:
-    to = "".join(ch for ch in str(payload.get("message_from") or payload.get("profile_wa_id") or "") if ch.isdigit())
-    if not to:
-        return
-
-    async with SessionLocal() as db:
-        ws = await db.get(Workspace, workspace_id)
-        triggers = list(await db.scalars(select(Trigger).where(Trigger.workspace_id == workspace_id)))
-        await db.execute(
-            delete(ProcessedMessage).where(
-                ProcessedMessage.created_at < datetime.now(timezone.utc) - timedelta(days=_DEDUPE_DAYS)
-            )
-        )
-        await db.commit()
-
-    text = extract_text(payload)
-    match = find_match(triggers, text, payload.get("referral_source_domain"))
-    if not match:
-        return
-
-    api_key = decrypt(ws.api_key_encrypted) if ws and ws.api_key_encrypted else None
-    if not api_key:
-        log.warning("Workspace %s matched trigger %s but has no API key", workspace_id, match.trigger.id)
-        return
-
-    name = str(payload.get("profile_name") or "").strip()
-    try:
-        message = getgabs.build_message(match.trigger.response_type, match.trigger.response, name)
-        await getgabs.send(api_key, to, message)
-        log.info("Workspace %s: '%s' replied to %s (%s)", workspace_id, match.trigger.name, to, match.reason)
-    except Exception:
-        log.exception("Workspace %s: sending trigger %s to %s failed", workspace_id, match.trigger.id, to)

@@ -1,10 +1,13 @@
 'use client';
 
-import { ExternalLink, FileText, Image as ImageIcon, List, MapPin, Music, Reply, Video } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { ExternalLink, FileText, Image as ImageIcon, List, MapPin, Music, Reply, Video, Workflow } from 'lucide-react';
+import Link from 'next/link';
 import type {
   AnyResponse,
   CtaUrlResponse,
   FileResponse,
+  FlowRefResponse,
   Header,
   ListResponse,
   LocationResponse,
@@ -12,6 +15,8 @@ import type {
   ResponseType,
   TextResponse,
 } from '@/lib/api';
+import { endpoints } from '@/lib/api';
+import { useWorkspaces } from './AppShell';
 
 const SAMPLE_NAME = 'Rahul';
 
@@ -72,6 +77,34 @@ function Body({ text, footer }: { text?: string; footer?: string }) {
   );
 }
 
+function FlowCard({ flowId }: { flowId: string }) {
+  const ws = useWorkspaces().current?.id;
+  const { data } = useQuery({ queryKey: ['flows', ws], queryFn: () => endpoints.flows(ws!), enabled: !!ws && !!flowId });
+  const flow = data?.find((f) => f.id === flowId);
+  return (
+    <div className="flex items-center gap-3 rounded-lg bg-white px-3 py-3 shadow-sm">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+        <Workflow className="size-4" />
+      </span>
+      <div className="min-w-0 flex-1 text-[13px]">
+        <p className="text-slate-500">Starts flow</p>
+        <p className="truncate font-medium text-slate-900">{flow?.name ?? (flowId ? 'Flow' : 'No flow selected')}</p>
+        {flow?.status === 'draft' && <p className="text-xs text-amber-700">Draft, won&apos;t run yet</p>}
+      </div>
+      {flowId && (
+        <Link href={`/flows/${flowId}`} className="text-xs font-medium text-sky-600 hover:underline">
+          Open
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/** One message as WhatsApp would show it, without the chat background. */
+export function MessageBubble({ type, response }: { type: ResponseType; response: AnyResponse }) {
+  return render(type, response);
+}
+
 function render(type: ResponseType, response: AnyResponse) {
   switch (type) {
     case 'text': {
@@ -122,6 +155,8 @@ function render(type: ResponseType, response: AnyResponse) {
         </Bubble>
       );
     }
+    case 'flow':
+      return <FlowCard flowId={(response as FlowRefResponse).flow_id} />;
     case 'location': {
       const r = response as LocationResponse;
       const has = r.latitude !== '' && r.longitude !== '' && r.latitude != null && r.longitude != null;

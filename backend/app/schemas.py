@@ -134,6 +134,12 @@ class LocationResponse(BaseModel):
     address: str | None = None
 
 
+class FlowRefResponse(BaseModel):
+    """A trigger that starts a flow instead of sending one message."""
+
+    flow_id: uuid.UUID
+
+
 RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "text": TextResponse,
     "file": FileResponse,
@@ -141,9 +147,10 @@ RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "cta_url": CtaUrlResponse,
     "list": ListResponse,
     "location": LocationResponse,
+    "flow": FlowRefResponse,
 }
 
-ResponseType = Literal["text", "file", "quick_reply", "cta_url", "list", "location"]
+ResponseType = Literal["text", "file", "quick_reply", "cta_url", "list", "location", "flow"]
 MatchType = Literal["equals", "contains", "any"]
 
 
@@ -169,7 +176,7 @@ class TriggerIn(BaseModel):
         self.source = (self.source or "").strip() or None
         # Normalise the payload through its model so only known fields are stored.
         self.response = RESPONSE_MODELS[self.response_type].model_validate(self.response).model_dump(
-            exclude_none=True
+            mode="json", exclude_none=True
         )
         return self
 
@@ -208,3 +215,82 @@ class TryMessageOut(BaseModel):
     trigger: TriggerOut | None
     matched_keyword: str | None
     reason: str
+
+
+# ── Flows ────────────────────────────────────────────
+
+
+class FlowNode(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    type: Literal["start", "send", "buttons", "list", "question"]
+    position: dict = {}
+    data: dict = {}
+
+
+class FlowEdge(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    source: str
+    target: str
+    sourceHandle: str | None = None
+
+
+class FlowGraph(BaseModel):
+    nodes: list[FlowNode] = Field(max_length=300)
+    edges: list[FlowEdge] = Field(default=[], max_length=1000)
+
+
+class FlowCreateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+
+
+class FlowIn(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    status: Literal["active", "draft"] = "draft"
+    graph: FlowGraph
+
+
+class FlowTriggerRef(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    name: str
+    match_type: str
+    keywords: list[str]
+    is_active: bool
+
+
+class FlowSummaryOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None
+    status: str
+    node_count: int
+    triggers: list[FlowTriggerRef]
+    created_at: datetime
+    updated_at: datetime
+    created_by: UserOut | None
+    updated_by: UserOut | None
+
+
+class FlowOut(FlowSummaryOut):
+    graph: dict
+
+
+class SimulateIn(BaseModel):
+    graph: FlowGraph
+    # The node waiting for a reply; null starts the flow from the top.
+    waiting_node_id: str | None = None
+    message: str = Field(default="", max_length=4096)
+
+
+class SimulateOutput(BaseModel):
+    node_id: str
+    response_type: str
+    response: dict
+
+
+class SimulateOut(BaseModel):
+    outputs: list[SimulateOutput]
+    waiting_node_id: str | None
+    note: str | None = None

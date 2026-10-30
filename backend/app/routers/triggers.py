@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import current_user, workspace_or_404
-from app.models import Trigger, User, Workspace
+from app.models import Flow, Trigger, User, Workspace
 from app.schemas import (
     BulkDeleteIn,
     TriggerIn,
@@ -25,6 +25,14 @@ async def _get(db: AsyncSession, ws: Workspace, trigger_id: uuid.UUID) -> Trigge
     if not t or t.workspace_id != ws.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Trigger not found")
     return t
+
+
+async def _check_flow(db: AsyncSession, ws: Workspace, body: TriggerIn) -> None:
+    if body.response_type != "flow":
+        return
+    flow = await db.get(Flow, uuid.UUID(body.response["flow_id"]))
+    if not flow or flow.workspace_id != ws.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pick a flow from this account")
 
 
 async def _reload(db: AsyncSession, trigger_id: uuid.UUID) -> Trigger:
@@ -47,6 +55,7 @@ async def create_trigger(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _check_flow(db, ws, body)
     t = Trigger(workspace_id=ws.id, created_by_id=user.id, updated_by_id=user.id, **body.model_dump())
     db.add(t)
     await db.commit()
@@ -85,6 +94,7 @@ async def update_trigger(
     db: AsyncSession = Depends(get_db),
 ):
     t = await _get(db, ws, trigger_id)
+    await _check_flow(db, ws, body)
     for field, value in body.model_dump().items():
         setattr(t, field, value)
     t.updated_by_id = user.id

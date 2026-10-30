@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Check, ChevronsUpDown, LogOut, Menu, Settings2, Zap } from 'lucide-react';
+import { Check, ChevronsUpDown, LogOut, Menu, Settings2, Workflow, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -12,6 +12,7 @@ import { Spinner } from './ui';
 const NAV = [
   { href: '/setup', label: 'Setup', icon: Settings2 },
   { href: '/auto-reply', label: 'Auto Reply', icon: Zap },
+  { href: '/flows', label: 'Flow Builder', icon: Workflow },
 ];
 
 /** The selected workspace, falling back to the first one when the stored id is stale. */
@@ -85,7 +86,8 @@ function WorkspaceSwitcher({ list, current }: { list: Workspace[]; current: Work
   );
 }
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+/** `bare` drops the sidebar for full-screen pages (the flow canvas) but keeps the login guard. */
+export default function AppShell({ children, bare }: { children: React.ReactNode; bare?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const { token, user, logout } = useSession();
@@ -103,6 +105,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => setNavOpen(false), [pathname]);
 
   if (!mounted || !token) return <Spinner />;
+  if (bare) return <div className="h-dvh bg-white">{children}</div>;
 
   const sidebar = (
     <aside className="flex h-full w-64 flex-col border-r border-line bg-white">
