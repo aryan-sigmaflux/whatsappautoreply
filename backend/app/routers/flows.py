@@ -161,16 +161,34 @@ async def simulate(flow_id: uuid.UUID, body: SimulateIn, ws: Workspace = Depends
     except engine.FlowInvalid as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
 
-    if body.waiting_node_id is None:
+    if body.waiting_node_id is None and not body.option_id:
         step = engine.start(graph)
         note = None if step.outputs or step.waiting else "The Trigger isn't connected to anything yet."
         return SimulateOut(outputs=step.outputs, waiting_node_id=step.waiting, note=note)
 
     node = next((n for n in graph["nodes"] if n["id"] == body.waiting_node_id), None)
+
+    # A tapped button/row, possibly on an older message the tester scrolled back to.
+    picked = engine.option_by_id(graph, body.option_id)
+    if picked and (not node or picked[0] != node["id"]):
+        target = engine.next_target(graph, *picked)
+        if not target:
+            return SimulateOut(
+                outputs=[],
+                waiting_node_id=body.waiting_node_id,
+                note="That option isn't connected to anything. In a real chat this message goes to your "
+                "keyword triggers, and the flow stays where it was.",
+            )
+        step = engine.run(graph, target)
+        note = "You tapped an earlier message, so the flow continued from there."
+        if not step.waiting:
+            note += " The flow ends here."
+        return SimulateOut(outputs=step.outputs, waiting_node_id=step.waiting, note=note)
+
     if not node:
         return SimulateOut(outputs=[], waiting_node_id=None, note="That step no longer exists. Restart the test.")
 
-    option = engine.choose(node, body.message)
+    option = picked[1] if picked else engine.choose(node, body.message)
     handle = option or "default"
     target = engine.next_target(graph, node["id"], handle)
     if not target:

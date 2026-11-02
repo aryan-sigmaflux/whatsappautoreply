@@ -54,12 +54,13 @@ async def receive(token: str, request: Request, background: BackgroundTasks):
             is_new = inserted is not None
         await db.commit()
 
-    if not ws.is_active:
-        return {"status": "ignored", "reason": "workspace paused"}
     if not is_new:
         return {"status": "ignored", "reason": "duplicate"}
     if str(payload.get("direction") or "inbound").lower() != "inbound":
         return {"status": "ignored", "reason": "outbound"}
+    if not ws.is_active:
+        background.add_task(conversation.record, ws.id, payload)  # Chats tab only, no reply
+        return {"status": "ignored", "reason": "workspace paused"}
 
     background.add_task(conversation.handle, ws.id, payload)
     return {"status": "ok"}

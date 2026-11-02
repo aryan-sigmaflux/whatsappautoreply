@@ -116,8 +116,48 @@ class Flow(Base):
     updated_by: Mapped[User | None] = relationship(foreign_keys=[updated_by_id], lazy="joined")
 
 
+class Chat(Base):
+    """One contact's conversation, shown in the Chats tab. Created the first time a flow runs
+    for the contact; after that every message to and from them is kept in ChatMessage."""
+
+    __tablename__ = "chats"
+    __table_args__ = (UniqueConstraint("workspace_id", "contact"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    contact: Mapped[str] = mapped_column(String(32))
+    name: Mapped[str] = mapped_column(String(255), default="")
+    # The 24-hour window for sending by hand runs from the contact's last message.
+    last_inbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_message_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    last_preview: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[int] = mapped_column(ForeignKey("chats.id", ondelete="CASCADE"), index=True)
+    # in = from the contact, out = sent by us
+    direction: Mapped[str] = mapped_column(String(8))
+    # in: text | button | media; out: a reply type (text, file, quick_reply, ...)
+    kind: Mapped[str] = mapped_column(String(32))
+    # in: {"text", "message_type"}; out: the response with {{name}} filled in
+    content: Mapped[dict] = mapped_column(JSONB)
+    # out only: "Flow: <name>", "Trigger: <name>" or the team member who sent it by hand
+    sent_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class FlowSession(Base):
-    """Where a contact is in a flow: the node waiting for their reply."""
+    """Where a contact is in a flow: the node waiting for their reply.
+
+    node_id is "" once the flow's path has finished; the row is kept until it expires so a
+    tap on an older message of the flow still continues it."""
 
     __tablename__ = "flow_sessions"
     __table_args__ = (UniqueConstraint("workspace_id", "contact"),)

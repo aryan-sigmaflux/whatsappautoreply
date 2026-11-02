@@ -33,8 +33,13 @@ export default function TestPanel({
   const bottom = useRef<HTMLDivElement>(null);
 
   const step = useMutation({
-    mutationFn: (vars: { waiting: string | null; message: string }) =>
-      endpoints.simulateFlow(workspaceId, flowId, { graph: getGraph(), waiting_node_id: vars.waiting, message: vars.message }),
+    mutationFn: (vars: { waiting: string | null; message: string; optionId?: string }) =>
+      endpoints.simulateFlow(workspaceId, flowId, {
+        graph: getGraph(),
+        waiting_node_id: vars.waiting,
+        message: vars.message,
+        option_id: vars.optionId ?? null,
+      }),
     onSuccess: (res) => {
       setChat((c) => [
         ...c,
@@ -73,14 +78,13 @@ export default function TestPanel({
     step.mutate({ waiting, message });
   };
 
-  // Tappable options for the step waiting on the customer.
-  const last = [...chat].reverse().find((c) => c.kind === 'bot');
-  let options: string[] = [];
-  if (waiting && last?.kind === 'bot' && last.output.node_id === waiting) {
-    if (last.output.response_type === 'quick_reply') options = (last.output.response as QuickReplyResponse).buttons.map((b) => b.title);
-    if (last.output.response_type === 'list')
-      options = (last.output.response as ListResponse).sections.flatMap((s) => s.rows.map((r) => r.title));
-  }
+  // Tapping a button works on any message, like scrolling back up in WhatsApp.
+  const tap = (option: { id: string; title: string }) => {
+    if (step.isPending) return;
+    setChat((c) => [...c, { kind: 'user', text: option.title }]);
+    setEnded(false);
+    step.mutate({ waiting, message: option.title, optionId: option.id });
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -100,7 +104,10 @@ export default function TestPanel({
       <div className="flex-1 space-y-2 overflow-y-auto bg-wa-bg p-4">
         {chat.map((item, i) =>
           item.kind === 'bot' ? (
-            <MessageBubble key={i} type={item.output.response_type} response={item.output.response} />
+            <div key={i}>
+              <MessageBubble type={item.output.response_type} response={item.output.response} />
+              <OptionChips output={item.output} current={item.output.node_id === waiting} onTap={tap} />
+            </div>
           ) : item.kind === 'user' ? (
             <div key={i} className="flex justify-end">
               <p className="max-w-[240px] rounded-lg rounded-tr-none bg-[#d9fdd3] px-2.5 py-1.5 text-[13px] whitespace-pre-wrap text-slate-800 shadow-sm">
@@ -119,19 +126,6 @@ export default function TestPanel({
       </div>
 
       <div className="space-y-2 border-t border-line p-3">
-        {options.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {options.map((o) => (
-              <button
-                key={o}
-                onClick={() => reply(o)}
-                className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700 hover:bg-sky-100"
-              >
-                {o}
-              </button>
-            ))}
-          </div>
-        )}
         {ended ? (
           <button onClick={restart} className="w-full rounded-lg border border-line py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
             Flow ended · Restart test
@@ -162,6 +156,40 @@ export default function TestPanel({
           </form>
         )}
       </div>
+    </div>
+  );
+}
+
+/** The buttons or list rows of one bot message, tappable as the customer. */
+function OptionChips({
+  output,
+  current,
+  onTap,
+}: {
+  output: SimulateResult['outputs'][number];
+  current: boolean;
+  onTap: (option: { id: string; title: string }) => void;
+}) {
+  let options: { id: string; title: string }[] = [];
+  if (output.response_type === 'quick_reply') options = (output.response as QuickReplyResponse).buttons ?? [];
+  if (output.response_type === 'list') options = ((output.response as ListResponse).sections ?? []).flatMap((s) => s.rows);
+  if (options.length === 0) return null;
+  return (
+    <div className="mt-1 flex max-w-[280px] flex-wrap gap-1.5">
+      {options.map((o) => (
+        <button
+          key={o.id}
+          onClick={() => onTap(o)}
+          title={current ? undefined : 'Tap as if the customer scrolled back up to this message'}
+          className={
+            current
+              ? 'rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700 hover:bg-sky-100'
+              : 'rounded-full border border-slate-200 bg-white/70 px-3 py-1 text-xs text-slate-500 hover:bg-white'
+          }
+        >
+          {o.title}
+        </button>
+      ))}
     </div>
   );
 }

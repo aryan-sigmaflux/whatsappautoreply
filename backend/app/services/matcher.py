@@ -61,6 +61,42 @@ def extract_text(payload: dict) -> str:
     return raw
 
 
+@dataclass
+class Tap:
+    """A tap on a Quick Reply button or List row."""
+
+    option_id: str | None  # the id we sent with the button/row, when GetGabs passes it on
+    title: str
+
+
+def extract_tap(payload: dict) -> Tap | None:
+    """The tapped option, or None when the message isn't a button or list tap."""
+    raw = payload.get("message_text")
+    message_type = str(payload.get("message_type") or "").lower()
+    if not isinstance(raw, str):
+        return None
+    data = None
+    if raw.lstrip().startswith("{"):
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            data = None
+    if isinstance(data, dict):
+        interactive = data.get("interactive") if isinstance(data.get("interactive"), dict) else {}
+        for reply in (
+            interactive.get("button_reply"),
+            interactive.get("list_reply"),
+            data.get("button_reply"),
+            data.get("list_reply"),
+        ):
+            if isinstance(reply, dict) and (reply.get("id") or reply.get("title")):
+                option_id = reply.get("id")
+                return Tap(str(option_id) if option_id else None, str(reply.get("title") or ""))
+    if message_type in ("button", "interactive"):
+        return Tap(None, extract_text(payload))
+    return None
+
+
 def find_match(triggers: list[Trigger], text: str, source: str | None) -> Match | None:
     message = normalize(text)
     source_norm = normalize(source or "")

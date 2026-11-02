@@ -282,6 +282,8 @@ class SimulateIn(BaseModel):
     # The node waiting for a reply; null starts the flow from the top.
     waiting_node_id: str | None = None
     message: str = Field(default="", max_length=4096)
+    # Set when the tester taps a button/row (on any message, not only the waiting one).
+    option_id: str | None = Field(default=None, max_length=200)
 
 
 class SimulateOutput(BaseModel):
@@ -294,3 +296,49 @@ class SimulateOut(BaseModel):
     outputs: list[SimulateOutput]
     waiting_node_id: str | None
     note: str | None = None
+
+
+# ── Chats ────────────────────────────────────────────
+
+
+class ChatOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    contact: str
+    name: str
+    last_inbound_at: datetime | None
+    last_message_at: datetime
+    last_preview: str
+    # The contact wrote in the last 24 hours, so a message can be sent by hand.
+    window_open: bool = False
+    window_closes_at: datetime | None = None
+
+
+class ChatMessageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    direction: str
+    kind: str
+    content: dict
+    sent_by: str | None
+    error: str | None
+    created_at: datetime
+
+
+class ChatDetailOut(BaseModel):
+    chat: ChatOut
+    messages: list[ChatMessageOut]
+
+
+class ChatSendIn(BaseModel):
+    """A message typed in the Chats tab: text, or a file with an optional caption."""
+
+    response_type: Literal["text", "file"]
+    response: dict
+
+    @model_validator(mode="after")
+    def _check(self):
+        self.response = RESPONSE_MODELS[self.response_type].model_validate(self.response).model_dump(
+            mode="json", exclude_none=True
+        )
+        return self

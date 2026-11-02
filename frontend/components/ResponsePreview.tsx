@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { ExternalLink, FileText, Image as ImageIcon, List, MapPin, Music, Reply, Video, Workflow } from 'lucide-react';
 import Link from 'next/link';
+import { createContext, useContext } from 'react';
 import type {
   AnyResponse,
   CtaUrlResponse,
@@ -47,12 +48,18 @@ function HeaderView({ header }: { header?: Header }) {
   return <Media kind={header.type} url={header.url} filename={header.filename} />;
 }
 
+/** Set by MessageBubble: sent by us (green, right-hand tail) and the real send time. */
+const BubbleStyle = createContext<{ outgoing?: boolean; time?: string }>({});
+
 function Bubble({ children, buttons }: { children: React.ReactNode; buttons?: React.ReactNode }) {
+  const { outgoing, time } = useContext(BubbleStyle);
   return (
     <div className="max-w-[280px] text-[13px] leading-snug text-slate-800">
-      <div className="rounded-lg rounded-tl-none bg-wa-bubble px-2.5 py-2 shadow-sm">
+      <div
+        className={`rounded-lg px-2.5 py-2 shadow-sm ${outgoing ? 'rounded-tr-none bg-[#d9fdd3]' : 'rounded-tl-none bg-wa-bubble'}`}
+      >
         {children}
-        <p className="mt-0.5 text-right text-[10px] text-slate-400">12:00</p>
+        <p className="mt-0.5 text-right text-[10px] text-slate-400">{time ?? '12:00'}</p>
       </div>
       {buttons && <div className="mt-0.5 space-y-0.5">{buttons}</div>}
     </div>
@@ -101,8 +108,18 @@ function FlowCard({ flowId }: { flowId: string }) {
 }
 
 /** One message as WhatsApp would show it, without the chat background. */
-export function MessageBubble({ type, response }: { type: ResponseType; response: AnyResponse }) {
-  return render(type, response);
+export function MessageBubble({
+  type,
+  response,
+  outgoing,
+  time,
+}: {
+  type: ResponseType;
+  response: AnyResponse;
+  outgoing?: boolean;
+  time?: string;
+}) {
+  return <BubbleStyle.Provider value={{ outgoing, time }}>{render(type, response)}</BubbleStyle.Provider>;
 }
 
 function render(type: ResponseType, response: AnyResponse) {

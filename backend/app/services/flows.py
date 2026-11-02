@@ -111,15 +111,19 @@ def start(graph: dict) -> Step:
     return run(graph, next_target(graph, s["id"], "next")) if s else Step()
 
 
+def _options(node: dict) -> list[dict]:
+    kind = node.get("type")
+    return _buttons(node) if kind == "buttons" else _rows(node) if kind == "list" else []
+
+
 def choose(node: dict, text: str) -> str | None:
     """Which option of a waiting node this reply picks, if any."""
+    kind = node.get("type")
     message = normalize(text)
     if not message:
         return None
-    kind = node.get("type")
     if kind in ("buttons", "list"):
-        options = _buttons(node) if kind == "buttons" else _rows(node)
-        for o in options:
+        for o in _options(node):
             if normalize(o.get("title") or "") == message or o.get("id") == text.strip():
                 return o["id"]
         return None
@@ -133,6 +137,35 @@ def choose(node: dict, text: str) -> str | None:
             if hit:
                 return case["id"]
     return None
+
+
+def option_by_id(graph: dict, option_id: str | None) -> tuple[str, str] | None:
+    """(node id, option id) of the Quick Reply button or List row with this id, anywhere in the flow.
+
+    Option ids are unique, so this finds the exact message a contact tapped, even an old one
+    they scrolled back up to."""
+    if not option_id:
+        return None
+    for node in graph.get("nodes", []):
+        if any(o.get("id") == option_id for o in _options(node)):
+            return node["id"], option_id
+    return None
+
+
+def option_by_title(graph: dict, title: str, skip: str | None = None) -> tuple[str, str] | None:
+    """Like option_by_id, for taps that arrive without an id: only when exactly one button or
+    row in the flow (other than on step `skip`) has this title, so a shared "Back" never guesses."""
+    message = normalize(title)
+    if not message:
+        return None
+    hits = [
+        (node["id"], o["id"])
+        for node in graph.get("nodes", [])
+        if node.get("id") != skip
+        for o in _options(node)
+        if o.get("id") and normalize(o.get("title") or "") == message
+    ]
+    return hits[0] if len(hits) == 1 else None
 
 
 # ── Validation ─────────────────────────────────────

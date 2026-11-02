@@ -110,6 +110,29 @@ export type SimulateResult = {
   note: string | null;
 };
 
+export type Chat = {
+  id: number;
+  contact: string;
+  name: string;
+  last_inbound_at: string | null;
+  last_message_at: string;
+  last_preview: string;
+  /** The contact wrote in the last 24 hours, so a message can be sent by hand. */
+  window_open: boolean;
+  window_closes_at: string | null;
+};
+export type ChatMessage = {
+  id: number;
+  direction: 'in' | 'out';
+  /** in: text | button | media; out: a reply type */
+  kind: string;
+  content: Record<string, unknown>;
+  sent_by: string | null;
+  error: string | null;
+  created_at: string;
+};
+export type ChatSend = { response_type: 'text'; response: TextResponse } | { response_type: 'file'; response: FileResponse };
+
 // ── Fetch ──────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -196,13 +219,18 @@ export const endpoints = {
     api<Flow>(`/api/workspaces/${ws}/flows/${id}`, json(body, 'PUT')),
   duplicateFlow: (ws: string, id: string) => api<Flow>(`/api/workspaces/${ws}/flows/${id}/duplicate`, { method: 'POST' }),
   deleteFlow: (ws: string, id: string) => api<void>(`/api/workspaces/${ws}/flows/${id}`, { method: 'DELETE' }),
-  simulateFlow: (ws: string, id: string, body: { graph: FlowGraph; waiting_node_id: string | null; message: string }) =>
+  simulateFlow: (ws: string, id: string, body: { graph: FlowGraph; waiting_node_id: string | null; message: string; option_id?: string | null }) =>
     api<SimulateResult>(`/api/workspaces/${ws}/flows/${id}/simulate`, json(body)),
+
+  chats: (ws: string, q = '') => api<Chat[]>(`/api/workspaces/${ws}/chats?q=${encodeURIComponent(q)}`),
+  chat: (ws: string, id: number) => api<{ chat: Chat; messages: ChatMessage[] }>(`/api/workspaces/${ws}/chats/${id}`),
+  sendChatMessage: (ws: string, id: number, body: ChatSend) =>
+    api<ChatMessage>(`/api/workspaces/${ws}/chats/${id}/messages`, json(body)),
 
   upload: (ws: string, file: File) => {
     const form = new FormData();
     form.append('file', file);
-    return api<{ url: string; filename: string; size: number }>(`/api/workspaces/${ws}/uploads`, {
+    return api<{ url: string; filename: string; content_type: string | null; size: number }>(`/api/workspaces/${ws}/uploads`, {
       method: 'POST',
       body: form,
     });

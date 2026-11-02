@@ -15,28 +15,30 @@ match keywords and send the reply back through the GetGabs send API.
 backend/                  FastAPI + async SQLAlchemy (asyncpg), Python 3.12
   app/main.py             app, CORS, create_all + admin seed on startup, /media static mount
   app/config.py           Settings from env / .env (see backend/.env.example)
-  app/models.py           User, Workspace, Trigger, Flow, FlowSession, ProcessedMessage
+  app/models.py           User, Workspace, Trigger, Flow, Chat, ChatMessage, FlowSession, ProcessedMessage
   app/schemas.py          Pydantic models, incl. one response model per reply type + WhatsApp limits
   app/security.py         bcrypt, JWT (PyJWT), Fernet encryption for GetGabs API keys
   app/deps.py             current_user, workspace_or_404
-  app/routers/            auth, workspaces, triggers (+ /try), flows (+ /simulate), uploads, webhook
+  app/routers/            auth, workspaces, triggers (+ /try), flows (+ /simulate), chats, uploads, webhook
   app/services/matcher.py extract_text() + find_match(): all matching rules live here
   app/services/getgabs.py build_message() (trigger -> GetGabs payload) + send()
   app/services/flows.py   flow engine: pure functions (run, choose, next_target, clean_graph)
   app/services/conversation.py  what to send for one inbound message (flows + triggers)
+  app/services/chats.py   Chats tab log: which contacts get a chat, logging messages, 24-hour window
   app/create_user.py      CLI: add a login / reset a password
 frontend/                 Next.js 16 App Router, React 19, Tailwind 4, React Query, zustand
   lib/api.ts              types, fetch wrapper, all endpoint calls, labels
   store/session.ts        persisted token, user, selected workspaceId
-  components/AppShell.tsx sidebar (Setup, Auto Reply, Flow Builder), workspace switcher, auth guard;
+  components/AppShell.tsx sidebar (Setup, Auto Reply, Flow Builder, Chats), workspace switcher, auth guard;
                           `bare` prop = no sidebar (used by the full-screen flow canvas)
   components/ResponseForm.tsx   per-reply-type forms + validation, shared by triggers and flow steps
   components/TriggerEditor.tsx  create/edit keyword trigger
   components/ResponsePreview.tsx WhatsApp-style preview
   components/TryMessageModal.tsx "Try a message" (dry run, sends nothing)
+  components/ChatView.tsx      Chats tab: chat list, conversation, composer (text or file)
   components/flow/        Flow Builder: FlowBuilder (canvas, palette, save), nodes (step components,
                           handles, BuilderContext), NodeEditor (side panel), TestPanel (chat simulator)
-  app/setup, app/auto-reply, app/auto-reply/new, app/auto-reply/[id], app/flows, app/flows/[id], app/login
+  app/setup, app/auto-reply, app/auto-reply/new, app/auto-reply/[id], app/flows, app/flows/[id], app/chats, app/login
 screenshots/              GetGabs UI references (gitignored)
 ```
 
@@ -71,8 +73,15 @@ screenshots/              GetGabs UI references (gitignored)
   - A step with nothing connected ends the flow. `MAX_STEPS = 25` stops loops of sending steps.
 - **Choosing an option:** the reply's text equals a button/row title (or its id), or matches a
   case's keywords.
-- **FlowSession** (one row per workspace + contact) stores the waiting step. It expires after
-  24 hours (`SESSION_HOURS`).
+- **Tapping an older message:** a contact can scroll up and tap a button/row of any earlier
+  message in the flow; the flow continues from that option. It is found by the option id
+  WhatsApp sends back (`matcher.extract_tap`, `flows.option_by_id`, searched in every Active
+  flow), or without an id by a title that is unique in the contact's flow (`option_by_title`).
+  An older option with nothing connected falls through to the triggers, never to the waiting
+  step's `default` path. Typed text only ever matches the waiting step.
+- **FlowSession** (one row per workspace + contact) stores the waiting step. `node_id` is `""`
+  once the path has finished; the row is kept so older taps still work. A non-flow trigger
+  deletes it. It expires after 24 hours (`SESSION_HOURS`).
 - **Saving:** a draft may be incomplete. Saving as Active runs `clean_graph(strict=True)`, which
   checks every step and requires the Trigger to be connected. Saving always drops connections
   to options that no longer exist.
@@ -95,9 +104,19 @@ GetGabs treats anything except a fast 200 as a failure and retries. The handler:
    4. Otherwise the normal trigger matching.
    - A non-flow trigger ends the contact's flow.
    - If nothing fires, the contact stays where they were, so a later button tap still works.
+5. Paused workspaces send nothing, but `conversation.record()` still logs the message into an
+   existing chat.
 
-Send failures are only written to the container log. There is no message log in the UI;
-the user chose not to have one.
+## Chats tab
+
+- A contact gets a **Chat** the first time a flow runs for them. Contacts who only ever hit
+  non-flow triggers have no chat. After that every message in and out is a **ChatMessage**:
+  inbound (`text | button | media`) and outbound (reply type + response with `{{name}}` filled,
+  `sent_by` = `Flow: X`, `Trigger: X` or the team member's name, `error` if GetGabs refused it).
+- Sending by hand (`POST /chats/{id}/messages`, text or file) is allowed only while the
+  contact's last inbound message is under 24 hours old (`chats.window_open`), else 409.
+- The UI polls (list every 10 s, open chat every 5 s). Messages sent from GetGabs' own panel
+  aren't seen, because the webhook ignores `direction != inbound`.
 
 ## GetGabs API (from their Postman docs)
 
@@ -192,5 +211,5 @@ GitHub Actions (`ci.yml`) runs on every push and PR:
 - GetGabs' "Default Actions" (working hours, first message) and "Chat Distribution".
 - Template, WhatsApp Flow/Form, Chatbot/AI Chatbot, Address and payment reply types.
 - Flow steps that save answers ("Collected Data"), delays, or appointment booking.
-- Message log, fired counts, per-contact cooldown.
+- Fired counts, per-contact cooldown.
 - A users page (logins are managed by CLI).
