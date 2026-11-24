@@ -3,9 +3,11 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     String,
     Text,
     UniqueConstraint,
@@ -117,8 +119,8 @@ class Flow(Base):
 
 
 class Chat(Base):
-    """One contact's conversation, shown in the Chats tab. Created the first time a flow runs
-    for the contact; after that every message to and from them is kept in ChatMessage."""
+    """One contact's conversation, shown in the Chats tab. Created the first time the contact
+    messages the workspace; every message to and from them is kept in ChatMessage."""
 
     __tablename__ = "chats"
     __table_args__ = (UniqueConstraint("workspace_id", "contact"),)
@@ -186,6 +188,34 @@ class ProcessedMessage(Base):
         UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE")
     )
     message_id: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
+class WebhookLog(Base):
+    """Every request GetGabs sends to a workspace's webhook URL, kept as received for the
+    Logs tab: duplicates, outbound and paused ones too. `result` says what we did with it."""
+
+    __tablename__ = "webhook_logs"
+    __table_args__ = (Index("ix_webhook_logs_workspace_id_id", "workspace_id", "id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE")
+    )
+    contact: Mapped[str] = mapped_column(String(32), default="")
+    name: Mapped[str] = mapped_column(String(255), default="")
+    message_type: Mapped[str] = mapped_column(String(64), default="")
+    # The text we matched on (a tapped button's title, empty for media)
+    text: Mapped[str] = mapped_column(Text, default="")
+    # The body exactly as parsed; {"_raw": "..."} when it was neither JSON nor a form
+    payload: Mapped[dict] = mapped_column(JSONB)
+    # received | duplicate | outbound | paused | unreadable
+    status: Mapped[str] = mapped_column(String(16))
+    # What happened: the reply sent, why nothing was sent, or the sending error. Null while
+    # a received message is still being handled.
+    result: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )

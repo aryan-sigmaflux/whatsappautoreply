@@ -330,6 +330,19 @@ class ChatDetailOut(BaseModel):
     messages: list[ChatMessageOut]
 
 
+class WebhookLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    contact: str
+    name: str
+    message_type: str
+    text: str
+    payload: dict
+    status: str
+    result: str | None
+    created_at: datetime
+
+
 class ChatSendIn(BaseModel):
     """A message typed in the Chats tab: text, or a file with an optional caption."""
 

@@ -69,7 +69,7 @@ export function ChatList({
     <div className="flex h-full flex-col">
       <div className="border-b border-line p-4">
         <h1 className="text-xl font-semibold text-slate-900">Chats</h1>
-        <p className="mt-0.5 text-xs text-muted">Contacts who started a flow</p>
+        <p className="mt-0.5 text-xs text-muted">Everyone who messaged this account</p>
         <div className="relative mt-3">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or number..." className="pl-9" />
@@ -86,7 +86,7 @@ export function ChatList({
           <div className="px-6 py-16 text-center">
             <MessagesSquare className="mx-auto size-8 text-slate-400" />
             <p className="mt-3 font-medium text-slate-800">{q ? 'No chats match' : 'No chats yet'}</p>
-            {!q && <p className="mt-1 text-sm text-muted">A chat appears here once a flow runs for a contact.</p>}
+            {!q && <p className="mt-1 text-sm text-muted">A chat appears here when a contact messages this account. If nothing shows up, check the Logs tab.</p>}
           </div>
         ) : (
           <ul className="divide-y divide-line">

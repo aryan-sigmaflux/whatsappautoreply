@@ -1,9 +1,9 @@
 """
 The Chats tab's message log.
 
-A contact gets a Chat the first time a flow runs for them. From then on every message they
-send, and every message we send them (flows, triggers, or typed by hand in the Chats tab),
-is stored as a ChatMessage. Contacts who never entered a flow are not logged.
+A contact gets a Chat the first time they message the workspace. Every message they send,
+and every message we send them (flows, triggers, or typed by hand in the Chats tab), is
+stored as a ChatMessage.
 """
 
 import uuid

@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Check, ChevronsUpDown, LogOut, Menu, MessagesSquare, Settings2, Workflow, Zap } from 'lucide-react';
+import { Check, ChevronsUpDown, LogOut, Menu, MessagesSquare, ScrollText, Settings2, Workflow, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -14,6 +14,7 @@ const NAV = [
   { href: '/auto-reply', label: 'Auto Reply', icon: Zap },
   { href: '/flows', label: 'Flow Builder', icon: Workflow },
   { href: '/chats', label: 'Chats', icon: MessagesSquare },
+  { href: '/logs', label: 'Logs', icon: ScrollText },
 ];
 
 /** The selected workspace, falling back to the first one when the stored id is stale. */

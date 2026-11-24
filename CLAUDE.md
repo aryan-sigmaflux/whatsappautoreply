@@ -15,30 +15,31 @@ match keywords and send the reply back through the GetGabs send API.
 backend/                  FastAPI + async SQLAlchemy (asyncpg), Python 3.12
   app/main.py             app, CORS, create_all + admin seed on startup, /media static mount
   app/config.py           Settings from env / .env (see backend/.env.example)
-  app/models.py           User, Workspace, Trigger, Flow, Chat, ChatMessage, FlowSession, ProcessedMessage
+  app/models.py           User, Workspace, Trigger, Flow, Chat, ChatMessage, FlowSession, ProcessedMessage, WebhookLog
   app/schemas.py          Pydantic models, incl. one response model per reply type + WhatsApp limits
   app/security.py         bcrypt, JWT (PyJWT), Fernet encryption for GetGabs API keys
   app/deps.py             current_user, workspace_or_404
-  app/routers/            auth, workspaces, triggers (+ /try), flows (+ /simulate), chats, uploads, webhook
+  app/routers/            auth, workspaces, triggers (+ /try), flows (+ /simulate), chats, logs, uploads, webhook
   app/services/matcher.py extract_text() + find_match(): all matching rules live here
   app/services/getgabs.py build_message() (trigger -> GetGabs payload) + send()
   app/services/flows.py   flow engine: pure functions (run, choose, next_target, clean_graph)
   app/services/conversation.py  what to send for one inbound message (flows + triggers)
-  app/services/chats.py   Chats tab log: which contacts get a chat, logging messages, 24-hour window
+  app/services/chats.py   Chats tab log: logging messages per contact, 24-hour window
   app/create_user.py      CLI: add a login / reset a password
 frontend/                 Next.js 16 App Router, React 19, Tailwind 4, React Query, zustand
   lib/api.ts              types, fetch wrapper, all endpoint calls, labels
   store/session.ts        persisted token, user, selected workspaceId
-  components/AppShell.tsx sidebar (Setup, Auto Reply, Flow Builder, Chats), workspace switcher, auth guard;
+  components/AppShell.tsx sidebar (Setup, Auto Reply, Flow Builder, Chats, Logs), workspace switcher, auth guard;
                           `bare` prop = no sidebar (used by the full-screen flow canvas)
   components/ResponseForm.tsx   per-reply-type forms + validation, shared by triggers and flow steps
   components/TriggerEditor.tsx  create/edit keyword trigger
   components/ResponsePreview.tsx WhatsApp-style preview
   components/TryMessageModal.tsx "Try a message" (dry run, sends nothing)
   components/ChatView.tsx      Chats tab: chat list, conversation, composer (text or file)
+  components/LogView.tsx       Logs tab: every webhook request, status, result, raw payload
   components/flow/        Flow Builder: FlowBuilder (canvas, palette, save), nodes (step components,
                           handles, BuilderContext), NodeEditor (side panel), TestPanel (chat simulator)
-  app/setup, app/auto-reply, app/auto-reply/new, app/auto-reply/[id], app/flows, app/flows/[id], app/chats, app/login
+  app/setup, app/auto-reply, app/auto-reply/new, app/auto-reply/[id], app/flows, app/flows/[id], app/chats, app/logs, app/login
 screenshots/              GetGabs UI references (gitignored)
 ```
 
@@ -96,21 +97,25 @@ GetGabs treats anything except a fast 200 as a failure and retries. The handler:
 1. Looks up the workspace by token (unknown token → 404) and sets `last_webhook_at`.
 2. Inserts `(workspace_id, message_id)` into `processed_messages` with ON CONFLICT DO
    NOTHING. A duplicate means a retry and is ignored.
-3. Ignores paused workspaces and `direction != inbound`.
-4. Returns 200, then `conversation.handle()` decides what to send, in a `BackgroundTask`:
+3. Stores the request in **`webhook_logs`** (Logs tab), whatever it is: `status` is
+   `received | duplicate | outbound | paused | unreadable`. `handle()` fills in `result`
+   (what was sent, why nothing was, or the error). NUL characters are stripped from the
+   payload (Postgres rejects them). Logs older than 30 days (`LOG_DAYS`) are deleted.
+4. Ignores paused workspaces and `direction != inbound`.
+5. Returns 200, then `conversation.handle()` decides what to send, in a `BackgroundTask`:
    1. The contact is mid-flow and the reply picks an option → follow that path.
    2. Otherwise an **Equals** keyword trigger wins, even mid-flow (so "hi" restarts).
    3. Mid-flow with a `default` path → follow it.
    4. Otherwise the normal trigger matching.
    - A non-flow trigger ends the contact's flow.
    - If nothing fires, the contact stays where they were, so a later button tap still works.
-5. Paused workspaces send nothing, but `conversation.record()` still logs the message into an
-   existing chat.
+6. Paused workspaces (and workspaces with no API key) send nothing, but `conversation.record()`
+   still logs the message into the contact's chat.
 
 ## Chats tab
 
-- A contact gets a **Chat** the first time a flow runs for them. Contacts who only ever hit
-  non-flow triggers have no chat. After that every message in and out is a **ChatMessage**:
+- A contact gets a **Chat** the first time they message the workspace. Every message in and
+  out is a **ChatMessage**:
   inbound (`text | button | media`) and outbound (reply type + response with `{{name}}` filled,
   `sent_by` = `Flow: X`, `Trigger: X` or the team member's name, `error` if GetGabs refused it).
 - Sending by hand (`POST /chats/{id}/messages`, text or file) is allowed only while the

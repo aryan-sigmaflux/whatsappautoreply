@@ -131,6 +131,21 @@ export type ChatMessage = {
   error: string | null;
   created_at: string;
 };
+export type LogStatus = 'received' | 'duplicate' | 'outbound' | 'paused' | 'unreadable';
+/** One request GetGabs sent to the webhook URL, as received. */
+export type WebhookLog = {
+  id: number;
+  contact: string;
+  name: string;
+  message_type: string;
+  /** The text we matched on (a tapped button's title, empty for media). */
+  text: string;
+  payload: Record<string, unknown>;
+  status: LogStatus;
+  /** What happened; null while a received message is still being handled. */
+  result: string | null;
+  created_at: string;
+};
 export type ChatSend = { response_type: 'text'; response: TextResponse } | { response_type: 'file'; response: FileResponse };
 
 // ── Fetch ──────────────────────────────────────────
@@ -226,6 +241,15 @@ export const endpoints = {
   chat: (ws: string, id: number) => api<{ chat: Chat; messages: ChatMessage[] }>(`/api/workspaces/${ws}/chats/${id}`),
   sendChatMessage: (ws: string, id: number, body: ChatSend) =>
     api<ChatMessage>(`/api/workspaces/${ws}/chats/${id}/messages`, json(body)),
+
+  logs: (ws: string, params: { q?: string; status?: string; before?: number | null; limit?: number } = {}) => {
+    const search = new URLSearchParams();
+    if (params.q) search.set('q', params.q);
+    if (params.status) search.set('status', params.status);
+    if (params.before) search.set('before', String(params.before));
+    if (params.limit) search.set('limit', String(params.limit));
+    return api<WebhookLog[]>(`/api/workspaces/${ws}/logs?${search}`);
+  },
 
   upload: (ws: string, file: File) => {
     const form = new FormData();

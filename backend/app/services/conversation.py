@@ -16,19 +16,20 @@ A trigger whose response_type is "flow" starts that flow; any other trigger send
 message and forgets whatever flow the contact was in. When a flow's path finishes, the
 session is kept with node_id "" so older taps still work until it expires.
 
-Once a flow has run for a contact, their messages are also logged for the Chats tab
-(app/services/chats.py).
+Every contact who messages gets a chat in the Chats tab, and every message to and from
+them is logged there (app/services/chats.py). The webhook's log row (Logs tab) gets a
+result line saying what was sent, or why nothing was.
 """
 
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import SessionLocal
-from app.models import Chat, Flow, FlowSession, ProcessedMessage, Trigger, Workspace
+from app.models import Chat, Flow, FlowSession, ProcessedMessage, Trigger, WebhookLog, Workspace
 from app.security import decrypt
 from app.services import chats, flows, getgabs
 from app.services.matcher import extract_tap, extract_text, find_match
@@ -37,13 +38,36 @@ log = logging.getLogger(__name__)
 
 SESSION_HOURS = 24  # WhatsApp's reply window
 _DEDUPE_DAYS = 7
+LOG_DAYS = 30  # how long the Logs tab keeps webhook requests
 _KEEP = object()  # leave the contact's flow position unchanged
 
 
-async def handle(workspace_id: uuid.UUID, payload: dict) -> None:
-    to = "".join(ch for ch in str(payload.get("message_from") or payload.get("profile_wa_id") or "") if ch.isdigit())
-    if not to:
+def _contact(payload: dict) -> str:
+    return "".join(ch for ch in str(payload.get("message_from") or payload.get("profile_wa_id") or "") if ch.isdigit())
+
+
+async def _set_result(log_id: int | None, result: str) -> None:
+    if log_id is None:
         return
+    async with SessionLocal() as db:
+        await db.execute(update(WebhookLog).where(WebhookLog.id == log_id).values(result=result[:2000]))
+        await db.commit()
+
+
+async def handle(workspace_id: uuid.UUID, payload: dict, log_id: int | None = None) -> None:
+    try:
+        result = await _handle(workspace_id, payload)
+    except Exception as e:
+        log.exception("Workspace %s: handling a message failed", workspace_id)
+        result = f"Error while handling: {e}"[:2000]
+    await _set_result(log_id, result)
+
+
+async def _handle(workspace_id: uuid.UUID, payload: dict) -> str:
+    """Reply to one message; returns the result line for the Logs tab."""
+    to = _contact(payload)
+    if not to:
+        return "Not replied: the message has no sender number"
     text = extract_text(payload)
     tap = extract_tap(payload)
     source = payload.get("referral_source_domain")
@@ -55,12 +79,14 @@ async def handle(workspace_id: uuid.UUID, payload: dict) -> None:
         api_key = decrypt(ws.api_key_encrypted) if ws and ws.api_key_encrypted else None
         if not api_key:
             log.warning("Workspace %s got a message but has no API key", workspace_id)
-            return
+            await record(workspace_id, payload)
+            return "Not replied: no GetGabs API key saved in Setup"
 
         await db.execute(delete(FlowSession).where(FlowSession.expires_at < now))
         await db.execute(
             delete(ProcessedMessage).where(ProcessedMessage.created_at < now - timedelta(days=_DEDUPE_DAYS))
         )
+        await db.execute(delete(WebhookLog).where(WebhookLog.created_at < now - timedelta(days=LOG_DAYS)))
         triggers = list(await db.scalars(select(Trigger).where(Trigger.workspace_id == workspace_id)))
         session = await db.scalar(
             select(FlowSession).where(FlowSession.workspace_id == workspace_id, FlowSession.contact == to)
@@ -71,6 +97,7 @@ async def handle(workspace_id: uuid.UUID, payload: dict) -> None:
         # None to forget the flow, or _KEEP
         position = _KEEP
         reason = ""
+        problem = ""  # why a matched trigger sent nothing
         sent_by = None  # shown on the outgoing messages in the Chats tab
 
         flow = await db.get(Flow, session.flow_id) if session else None
@@ -137,6 +164,7 @@ async def handle(workspace_id: uuid.UUID, payload: dict) -> None:
                             sent_by = f"Flow: {target_flow.name}"
                         else:
                             log.warning("Trigger %s points at a missing or draft flow", t.id)
+                            problem = "its flow is missing or still a Draft"
                     else:
                         outputs = [{"node_id": None, "response_type": t.response_type, "response": t.response}]
                         position = None
@@ -156,14 +184,11 @@ async def handle(workspace_id: uuid.UUID, payload: dict) -> None:
                 )
             )
 
-        # Chats tab: a flow running for the contact starts their chat; after that, log everything.
-        chat = await chats.get(db, workspace_id, to)
-        if not chat and isinstance(position, tuple):
-            chat = await chats.get_or_create(db, workspace_id, to, name)
-        if chat:
-            kind, content = chats.inbound_content(payload, text, tap)
-            chats.add(db, chat, "in", kind, content, name=name)
-        chat_id = chat.id if chat else None
+        # Chats tab: every contact gets a chat, and every message is logged in it.
+        chat = await chats.get_or_create(db, workspace_id, to, name)
+        kind, content = chats.inbound_content(payload, text, tap)
+        chats.add(db, chat, "in", kind, content, name=name)
+        chat_id = chat.id
         await db.commit()
 
     sent: list[tuple[dict, str | None]] = []  # (output, error)
@@ -188,16 +213,28 @@ async def handle(workspace_id: uuid.UUID, payload: dict) -> None:
                     chats.add(db, chat, "out", out["response_type"], content, sent_by=sent_by, error=error)
                 await db.commit()
 
+    if not outputs:
+        if problem:
+            return f"Not replied: {reason} matched, but {problem}"
+        if reason:
+            return f"No reply: {reason} has nothing connected, so the flow ended"
+        return "No reply: no trigger or flow step matched"
+    failed = next((err for _, err in sent if err), None)
+    count = sum(1 for _, err in sent if not err)
+    if failed:
+        return f"Sending failed after {count} of {len(outputs)} message(s) — {reason}: {failed}"
+    return f"Replied with {count} message(s) — {reason}"
+
 
 async def record(workspace_id: uuid.UUID, payload: dict) -> None:
-    """A message for a paused workspace: nothing is sent, but an existing chat still logs it,
-    so the Chats tab shows it and its 24-hour window stays right."""
-    to = "".join(ch for ch in str(payload.get("message_from") or payload.get("profile_wa_id") or "") if ch.isdigit())
+    """A message we don't reply to (paused workspace, or no API key): it is still logged in
+    the contact's chat, so the Chats tab shows it and its 24-hour window stays right."""
+    to = _contact(payload)
     if not to:
         return
+    name = str(payload.get("profile_name") or "").strip()
     async with SessionLocal() as db:
-        chat = await chats.get(db, workspace_id, to)
-        if chat:
-            kind, content = chats.inbound_content(payload, extract_text(payload), extract_tap(payload))
-            chats.add(db, chat, "in", kind, content, name=str(payload.get("profile_name") or "").strip())
-            await db.commit()
+        chat = await chats.get_or_create(db, workspace_id, to, name)
+        kind, content = chats.inbound_content(payload, extract_text(payload), extract_tap(payload))
+        chats.add(db, chat, "in", kind, content, name=name)
+        await db.commit()
