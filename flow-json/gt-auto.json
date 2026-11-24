@@ -1,0 +1,374 @@
+{
+  "name": "G T Auto",
+  "description": "Main menu: cars, insurance, loans, contact",
+  "graph": {
+    "nodes": [
+      {
+        "id": "start",
+        "type": "start",
+        "data": {}
+      },
+      {
+        "id": "menu",
+        "type": "list",
+        "data": {
+          "response": {
+            "header_text": "Welcome to G T Auto",
+            "body": "How can we help you today?",
+            "button_text": "View options",
+            "sections": [
+              {
+                "title": "G T Auto",
+                "rows": [
+                  {
+                    "id": "new_car",
+                    "title": "New Car"
+                  },
+                  {
+                    "id": "used_car",
+                    "title": "Used Car"
+                  },
+                  {
+                    "id": "general_insurance",
+                    "title": "General Insurance"
+                  },
+                  {
+                    "id": "car_loans",
+                    "title": "Car Loans"
+                  },
+                  {
+                    "id": "accessories",
+                    "title": "Accessories & Repair"
+                  },
+                  {
+                    "id": "contact",
+                    "title": "Contact G T Auto"
+                  },
+                  {
+                    "id": "google_reviews",
+                    "title": "Google Reviews"
+                  },
+                  {
+                    "id": "call_govinda",
+                    "title": "Call Govinda Naik"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "new_car_msg",
+        "type": "send",
+        "data": {
+          "response_type": "text",
+          "response": {
+            "body": "Thank you for your interest in a new car! Please share your name, the car model you are interested in and your budget. Our team will get back to you shortly."
+          }
+        }
+      },
+      {
+        "id": "used_car_msg",
+        "type": "send",
+        "data": {
+          "response_type": "text",
+          "response": {
+            "body": "Thank you for your interest in a used car! Please share your name, the car model you are looking for and your budget. Our team will get back to you shortly."
+          }
+        }
+      },
+      {
+        "id": "insurance",
+        "type": "buttons",
+        "data": {
+          "response": {
+            "header": {
+              "type": "text",
+              "text": "General Insurance"
+            },
+            "body": "We are award winning General Insurance Advisors for Motor Insurance, Health Insurance, Fire Insurance and more. How can we help you?",
+            "buttons": [
+              {
+                "id": "renew_insurance",
+                "title": "Renew My Insurance"
+              },
+              {
+                "id": "new_insurance",
+                "title": "New Insurance"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "renew_msg",
+        "type": "send",
+        "data": {
+          "response_type": "text",
+          "response": {
+            "body": "Kindly share your existing policy with us."
+          }
+        }
+      },
+      {
+        "id": "new_ins_msg",
+        "type": "send",
+        "data": {
+          "response_type": "text",
+          "response": {
+            "body": "Kindly share details which Insurance you want to buy."
+          }
+        }
+      },
+      {
+        "id": "loans",
+        "type": "buttons",
+        "data": {
+          "response": {
+            "header": {
+              "type": "text",
+              "text": "Car Loans"
+            },
+            "body": "We are officially empanelled with leading Banks & NBFC's for your Car Loans. Please let us know which loan you are looking for.",
+            "buttons": [
+              {
+                "id": "new_car_loan",
+                "title": "New Car Loan"
+              },
+              {
+                "id": "used_car_loan",
+                "title": "Used Car Loan"
+              },
+              {
+                "id": "refinance",
+                "title": "Re-Finance"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "new_loan_msg",
+        "type": "send",
+        "data": {
+          "response_type": "text",
+          "response": {
+            "body": "Have you booked the car? If booked, please share the booking details with us."
+          }
+        }
+      },
+      {
+        "id": "used_loan_msg",
+        "type": "send",
+        "data": {
+          "response_type": "text",
+          "response": {
+            "body": "Please share details of the vehicle."
+          }
+        }
+      },
+      {
+        "id": "refinance_msg",
+        "type": "send",
+        "data": {
+          "response_type": "text",
+          "response": {
+            "body": "Please share details of the vehicle."
+          }
+        }
+      },
+      {
+        "id": "accessories_msg",
+        "type": "send",
+        "data": {
+          "response_type": "text",
+          "response": {
+            "body": "Kindly contact us on 9870706070 / 9090878723 for more details"
+          }
+        }
+      },
+      {
+        "id": "contact_menu",
+        "type": "buttons",
+        "data": {
+          "response": {
+            "header": {
+              "type": "text",
+              "text": "Contact G T Auto"
+            },
+            "body": "We are eager to serve you.",
+            "buttons": [
+              {
+                "id": "phone",
+                "title": "Phone Number"
+              },
+              {
+                "id": "address",
+                "title": "Address"
+              },
+              {
+                "id": "email",
+                "title": "Email ID"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "phone_msg",
+        "type": "send",
+        "data": {
+          "response_type": "text",
+          "response": {
+            "body": "+919870706070\n+919090878723"
+          }
+        }
+      },
+      {
+        "id": "address_msg",
+        "type": "send",
+        "data": {
+          "response_type": "text",
+          "response": {
+            "body": "G T AUTO – Your Trusted Multicar Dealer\n\nAddress: Near Kerosene Oil Pump Depot, Bhakti Mandir Road, Thane"
+          }
+        }
+      },
+      {
+        "id": "email_msg",
+        "type": "send",
+        "data": {
+          "response_type": "text",
+          "response": {
+            "body": "gtautothane@gmail.com"
+          }
+        }
+      },
+      {
+        "id": "reviews_msg",
+        "type": "send",
+        "data": {
+          "response_type": "text",
+          "response": {
+            "body": "You can read our Google Reviews here: https://g.co/kgs/D5dsQM"
+          }
+        }
+      },
+      {
+        "id": "govinda_msg",
+        "type": "send",
+        "data": {
+          "response_type": "text",
+          "response": {
+            "body": "Please call on +919870706070"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-start-next",
+        "source": "start",
+        "sourceHandle": "next",
+        "target": "menu"
+      },
+      {
+        "id": "e-menu-new_car",
+        "source": "menu",
+        "sourceHandle": "new_car",
+        "target": "new_car_msg"
+      },
+      {
+        "id": "e-menu-used_car",
+        "source": "menu",
+        "sourceHandle": "used_car",
+        "target": "used_car_msg"
+      },
+      {
+        "id": "e-menu-general_insurance",
+        "source": "menu",
+        "sourceHandle": "general_insurance",
+        "target": "insurance"
+      },
+      {
+        "id": "e-insurance-renew_insurance",
+        "source": "insurance",
+        "sourceHandle": "renew_insurance",
+        "target": "renew_msg"
+      },
+      {
+        "id": "e-insurance-new_insurance",
+        "source": "insurance",
+        "sourceHandle": "new_insurance",
+        "target": "new_ins_msg"
+      },
+      {
+        "id": "e-menu-car_loans",
+        "source": "menu",
+        "sourceHandle": "car_loans",
+        "target": "loans"
+      },
+      {
+        "id": "e-loans-new_car_loan",
+        "source": "loans",
+        "sourceHandle": "new_car_loan",
+        "target": "new_loan_msg"
+      },
+      {
+        "id": "e-loans-used_car_loan",
+        "source": "loans",
+        "sourceHandle": "used_car_loan",
+        "target": "used_loan_msg"
+      },
+      {
+        "id": "e-loans-refinance",
+        "source": "loans",
+        "sourceHandle": "refinance",
+        "target": "refinance_msg"
+      },
+      {
+        "id": "e-menu-accessories",
+        "source": "menu",
+        "sourceHandle": "accessories",
+        "target": "accessories_msg"
+      },
+      {
+        "id": "e-menu-contact",
+        "source": "menu",
+        "sourceHandle": "contact",
+        "target": "contact_menu"
+      },
+      {
+        "id": "e-contact_menu-phone",
+        "source": "contact_menu",
+        "sourceHandle": "phone",
+        "target": "phone_msg"
+      },
+      {
+        "id": "e-contact_menu-address",
+        "source": "contact_menu",
+        "sourceHandle": "address",
+        "target": "address_msg"
+      },
+      {
+        "id": "e-contact_menu-email",
+        "source": "contact_menu",
+        "sourceHandle": "email",
+        "target": "email_msg"
+      },
+      {
+        "id": "e-menu-google_reviews",
+        "source": "menu",
+        "sourceHandle": "google_reviews",
+        "target": "reviews_msg"
+      },
+      {
+        "id": "e-menu-call_govinda",
+        "source": "menu",
+        "sourceHandle": "call_govinda",
+        "target": "govinda_msg"
+      }
+    ]
+  }
+}

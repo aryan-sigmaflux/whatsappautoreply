@@ -244,6 +244,14 @@ class FlowCreateIn(BaseModel):
     description: str | None = None
 
 
+class FlowImportIn(BaseModel):
+    """A flow uploaded as JSON in the Flow Builder. It is saved as a Draft."""
+
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    graph: FlowGraph
+
+
 class FlowIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None

@@ -1,11 +1,12 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, Copy, Pencil, Plus, Search, Sparkles, Trash2, Workflow } from 'lucide-react';
+import { ChevronDown, Copy, FileJson, Pencil, Plus, Search, Sparkles, Trash2, Workflow } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import AppShell, { useWorkspaces } from '@/components/AppShell';
+import ImportFlowModal from '@/components/flow/ImportFlowModal';
 import NoWorkspace from '@/components/NoWorkspace';
 import { Button, ErrorText, Field, Input, Modal, Select, Spinner, Textarea } from '@/components/ui';
 import { endpoints, timeAgo, type FlowSummary, type Workspace } from '@/lib/api';
@@ -92,6 +93,57 @@ function NewFlowModal({ ws, open, onClose }: { ws: Workspace; open: boolean; onC
   );
 }
 
+/** "New Flow" with a menu: start blank, or import a JSON file. */
+function NewFlowMenu({ onBlank, onImport }: { onBlank: () => void; onImport: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const close = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+  const item = 'flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-slate-50';
+  return (
+    <div ref={ref} className="relative inline-block text-left">
+      <Button onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
+        <Plus className="size-4" /> New Flow <ChevronDown className={`size-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </Button>
+      {open && (
+        <div role="menu" className="absolute right-0 z-30 mt-1 w-64 rounded-xl border border-line bg-white p-1 shadow-lg">
+          <button
+            role="menuitem"
+            className={item}
+            onClick={() => {
+              setOpen(false);
+              onBlank();
+            }}
+          >
+            <Workflow className="mt-0.5 size-4 text-slate-500" />
+            <span>
+              <span className="block text-sm font-medium text-slate-900">Blank flow</span>
+              <span className="block text-xs text-muted">Start from an empty canvas</span>
+            </span>
+          </button>
+          <button
+            role="menuitem"
+            className={item}
+            onClick={() => {
+              setOpen(false);
+              onImport();
+            }}
+          >
+            <FileJson className="mt-0.5 size-4 text-slate-500" />
+            <span>
+              <span className="block text-sm font-medium text-slate-900">Import JSON</span>
+              <span className="block text-xs text-muted">Upload a flow file, or get the sample</span>
+            </span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FlowList({ ws }: { ws: Workspace }) {
   const qc = useQueryClient();
   const router = useRouter();
@@ -100,6 +152,7 @@ function FlowList({ ws }: { ws: Workspace }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [deleting, setDeleting] = useState<FlowSummary | null>(null);
 
   const visible = useMemo(() => {
@@ -135,9 +188,7 @@ function FlowList({ ws }: { ws: Workspace }) {
           <h1 className="text-2xl font-semibold text-slate-900">Flow Builder</h1>
           <p className="mt-1 text-sm text-muted">Build multi-step conversations that branch on what the customer replies.</p>
         </div>
-        <Button onClick={() => setCreating(true)}>
-          <Plus className="size-4" /> New Flow
-        </Button>
+        <NewFlowMenu onBlank={() => setCreating(true)} onImport={() => setImporting(true)} />
       </div>
 
       <HowItWorks />
@@ -166,9 +217,9 @@ function FlowList({ ws }: { ws: Workspace }) {
             <Workflow className="mx-auto size-8 text-slate-400" />
             <p className="mt-3 font-medium text-slate-800">No flows yet</p>
             <p className="mt-1 text-sm text-muted">Create one, then start it from a keyword trigger.</p>
-            <Button className="mt-5" onClick={() => setCreating(true)}>
-              <Plus className="size-4" /> New Flow
-            </Button>
+            <div className="mt-5">
+              <NewFlowMenu onBlank={() => setCreating(true)} onImport={() => setImporting(true)} />
+            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -258,6 +309,7 @@ function FlowList({ ws }: { ws: Workspace }) {
       <ErrorText error={duplicate.error} />
 
       <NewFlowModal ws={ws} open={creating} onClose={() => setCreating(false)} />
+      <ImportFlowModal ws={ws} open={importing} onClose={() => setImporting(false)} />
       <Modal
         open={!!deleting}
         onClose={() => {

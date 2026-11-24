@@ -9,6 +9,7 @@ from app.deps import current_user, workspace_or_404
 from app.models import Flow, Trigger, User, Workspace
 from app.schemas import (
     FlowCreateIn,
+    FlowImportIn,
     FlowIn,
     FlowOut,
     FlowSummaryOut,
@@ -79,6 +80,32 @@ async def create_flow(
         description=(body.description or "").strip() or None,
         status="draft",
         graph=engine.new_graph(),
+        created_by_id=user.id,
+        updated_by_id=user.id,
+    )
+    db.add(f)
+    await db.commit()
+    return await _out(db, ws, f.id)
+
+
+@router.post("/import", response_model=FlowOut, status_code=status.HTTP_201_CREATED)
+async def import_flow(
+    body: FlowImportIn,
+    ws: Workspace = Depends(workspace_or_404),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a Draft flow from uploaded JSON. Every step is checked, as when saving as Active."""
+    try:
+        graph = engine.prepare_import(body.graph)
+    except engine.FlowInvalid as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+    f = Flow(
+        workspace_id=ws.id,
+        name=body.name.strip(),
+        description=(body.description or "").strip() or None,
+        status="draft",
+        graph=graph,
         created_by_id=user.id,
         updated_by_id=user.id,
     )

@@ -230,6 +230,8 @@ export const endpoints = {
   flow: (ws: string, id: string) => api<Flow>(`/api/workspaces/${ws}/flows/${id}`),
   createFlow: (ws: string, body: { name: string; description?: string }) =>
     api<Flow>(`/api/workspaces/${ws}/flows`, json(body)),
+  importFlow: (ws: string, body: { name: string; description?: string | null; graph: FlowGraph }) =>
+    api<Flow>(`/api/workspaces/${ws}/flows/import`, json(body)),
   saveFlow: (ws: string, id: string, body: { name: string; description: string | null; status: FlowStatus; graph: FlowGraph }) =>
     api<Flow>(`/api/workspaces/${ws}/flows/${id}`, json(body, 'PUT')),
   duplicateFlow: (ws: string, id: string) => api<Flow>(`/api/workspaces/${ws}/flows/${id}/duplicate`, { method: 'POST' }),

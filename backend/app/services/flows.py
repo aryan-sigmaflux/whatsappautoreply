@@ -14,6 +14,7 @@ Sending nodes chain straight through to the next node; a waiting node sends its 
 and stops until the contact replies. A node with nothing connected ends the flow.
 """
 
+import secrets
 from dataclasses import dataclass, field
 
 from pydantic import ValidationError
@@ -253,3 +254,101 @@ def clean_graph(graph: FlowGraph, strict: bool) -> dict:
 
 def new_graph() -> dict:
     return {"nodes": [{"id": "start", "type": "start", "position": {"x": 0, "y": 0}, "data": {}}], "edges": []}
+
+
+# ── Import ─────────────────────────────────────────
+
+_COLUMN = 380  # px between step columns (a step is 288px wide in the builder)
+_GAP = 40
+
+
+def _height(node: dict) -> int:
+    """Rough on-canvas height of a step, so laid-out steps don't overlap."""
+    kind = node.get("type")
+    if kind == "start":
+        return 110
+    if kind in ("buttons", "list", "question"):
+        options = len(_buttons(node) if kind == "buttons" else _rows(node) if kind == "list" else _cases(node))
+        return 220 + 34 * options
+    return 190
+
+
+def layout(graph: dict) -> None:
+    """Place every step left to right as a tree from the Trigger, each option's path below
+    the one before. Steps that can't be reached go in a column at the end."""
+    nodes = {n["id"]: n for n in graph["nodes"]}
+    children: dict[str, list[str]] = {}
+    for n in graph["nodes"]:
+        out = [next_target(graph, n["id"], h) for h in handles(n)]
+        children[n["id"]] = [t for t in out if t in nodes]
+
+    placed: dict[str, tuple[int, float]] = {}
+    cursor = 0.0
+
+    def place(node_id: str, depth: int) -> float:
+        nonlocal cursor
+        placed[node_id] = (depth, 0)
+        kids = [c for c in children[node_id] if c not in placed]
+        ys = [place(c, depth + 1) for c in kids]
+        if ys:
+            y = (ys[0] + ys[-1]) / 2
+            cursor = max(cursor, y + _height(nodes[node_id]) + _GAP)
+        else:
+            y = cursor
+            cursor += _height(nodes[node_id]) + _GAP
+        placed[node_id] = (depth, y)
+        return y
+
+    start = start_node(graph)
+    if start:
+        place(start["id"], 0)
+    last = max((d for d, _ in placed.values()), default=-1) + 1
+    y = 0.0
+    for n in graph["nodes"]:
+        if n["id"] not in placed:
+            placed[n["id"]] = (last, y)
+            y += _height(n) + _GAP
+    for n in graph["nodes"]:
+        depth, y = placed[n["id"]]
+        n["position"] = {"x": depth * _COLUMN, "y": round(y)}
+
+
+def _has_position(node: dict) -> bool:
+    pos = node.get("position") or {}
+    return all(isinstance(pos.get(k), (int, float)) for k in ("x", "y"))
+
+
+def prepare_import(graph: FlowGraph) -> dict:
+    """An uploaded graph, ready to save as a new flow.
+
+    Every button, row and case gets a fresh id (taps are found by option id across all
+    Active flows, so importing the same file twice must not share ids); connections follow.
+    When any step has no position, the whole flow is laid out automatically. Raises
+    FlowInvalid like clean_graph(strict=True)."""
+    raw = graph.model_dump()
+    renamed: dict[tuple[str, str], str] = {}
+    for node in raw["nodes"]:
+        data = node.get("data") or {}
+        options = (
+            _buttons(node) if node["type"] == "buttons"
+            else _rows(node) if node["type"] == "list"
+            else _cases(node) if node["type"] == "question"
+            else []
+        )
+        prefix = {"buttons": "btn", "list": "row", "question": "case"}.get(node["type"], "opt")
+        for o in options:
+            if not isinstance(o, dict):
+                continue
+            new = f"{prefix}-{secrets.token_hex(6)}"
+            if o.get("id"):
+                renamed[(node["id"], str(o["id"]))] = new
+            o["id"] = new
+        node["data"] = data
+    for e in raw["edges"]:
+        handle = e.get("sourceHandle") or "next"
+        e["sourceHandle"] = renamed.get((e["source"], handle), handle)
+
+    cleaned = clean_graph(FlowGraph.model_validate(raw), strict=True)
+    if not all(_has_position(n) for n in cleaned["nodes"]):
+        layout(cleaned)
+    return cleaned

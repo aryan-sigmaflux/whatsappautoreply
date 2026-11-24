@@ -19,10 +19,10 @@ backend/                  FastAPI + async SQLAlchemy (asyncpg), Python 3.12
   app/schemas.py          Pydantic models, incl. one response model per reply type + WhatsApp limits
   app/security.py         bcrypt, JWT (PyJWT), Fernet encryption for GetGabs API keys
   app/deps.py             current_user, workspace_or_404
-  app/routers/            auth, workspaces, triggers (+ /try), flows (+ /simulate), chats, logs, uploads, webhook
+  app/routers/            auth, workspaces, triggers (+ /try), flows (+ /simulate, /import), chats, logs, uploads, webhook
   app/services/matcher.py extract_text() + find_match(): all matching rules live here
   app/services/getgabs.py build_message() (trigger -> GetGabs payload) + send()
-  app/services/flows.py   flow engine: pure functions (run, choose, next_target, clean_graph)
+  app/services/flows.py   flow engine: pure functions (run, choose, next_target, clean_graph, prepare_import)
   app/services/conversation.py  what to send for one inbound message (flows + triggers)
   app/services/chats.py   Chats tab log: logging messages per contact, 24-hour window
   app/create_user.py      CLI: add a login / reset a password
@@ -38,9 +38,11 @@ frontend/                 Next.js 16 App Router, React 19, Tailwind 4, React Que
   components/ChatView.tsx      Chats tab: chat list, conversation, composer (text or file)
   components/LogView.tsx       Logs tab: every webhook request, status, result, raw payload
   components/flow/        Flow Builder: FlowBuilder (canvas, palette, save), nodes (step components,
-                          handles, BuilderContext), NodeEditor (side panel), TestPanel (chat simulator)
+                          handles, BuilderContext), NodeEditor (side panel), TestPanel (chat simulator),
+                          ImportFlowModal (JSON upload + the sample file)
   app/setup, app/auto-reply, app/auto-reply/new, app/auto-reply/[id], app/flows, app/flows/[id], app/chats, app/logs, app/login
 screenshots/              GetGabs UI references (gitignored)
+flow-json/                flow files ready for Import JSON (e.g. gt-auto.json)
 ```
 
 ## Core concepts
@@ -90,6 +92,12 @@ screenshots/              GetGabs UI references (gitignored)
   validation; keep the two in sync.
 - A flow can't be deleted while a trigger uses it (409).
 - `/flows/{id}/simulate` runs the unsaved canvas graph for the Test panel and sends nothing.
+- **Import JSON** (Flow Builder → New Flow menu): the file is `{name, description?, graph: {nodes, edges}}`,
+  the same graph shape the builder saves; the sample is the `SAMPLE` constant in `ImportFlowModal.tsx`.
+  `POST /flows/import` (`flows.prepare_import`) gives every button/row/case a fresh id (taps are
+  looked up by option id across all Active flows, so two imports must not share ids), checks
+  every step like saving as Active, lays the flow out when any step has no `position`, and
+  saves it as a Draft.
 
 ## Webhook flow (`routers/webhook.py`)
 
