@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api/workspaces/{workspace_id}/logs", tags=["logs"])
 async def list_logs(
     q: str = Query(default="", max_length=100),
     status: str = Query(default="", max_length=16),
+    text: str = Query(default="", max_length=500, description="Only messages containing this text"),
     before: int | None = Query(default=None, description="Only rows older than this id (paging)"),
     limit: int = Query(default=100, ge=1, le=200),
     ws: Workspace = Depends(workspace_or_404),
@@ -26,6 +27,8 @@ async def list_logs(
         stmt = stmt.where(WebhookLog.id < before)
     if status:
         stmt = stmt.where(WebhookLog.status == status)
+    if text.strip():
+        stmt = stmt.where(WebhookLog.text.icontains(text.strip(), autoescape=True))
     if q.strip():
         like = f"%{q.strip()}%"
         stmt = stmt.where(

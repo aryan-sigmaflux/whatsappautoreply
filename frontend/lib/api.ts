@@ -244,10 +244,14 @@ export const endpoints = {
   sendChatMessage: (ws: string, id: number, body: ChatSend) =>
     api<ChatMessage>(`/api/workspaces/${ws}/chats/${id}/messages`, json(body)),
 
-  logs: (ws: string, params: { q?: string; status?: string; before?: number | null; limit?: number } = {}) => {
+  logs: (
+    ws: string,
+    params: { q?: string; status?: string; text?: string; before?: number | null; limit?: number } = {},
+  ) => {
     const search = new URLSearchParams();
     if (params.q) search.set('q', params.q);
     if (params.status) search.set('status', params.status);
+    if (params.text) search.set('text', params.text);
     if (params.before) search.set('before', String(params.before));
     if (params.limit) search.set('limit', String(params.limit));
     return api<WebhookLog[]>(`/api/workspaces/${ws}/logs?${search}`);

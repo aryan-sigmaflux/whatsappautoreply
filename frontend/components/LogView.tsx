@@ -9,6 +9,15 @@ import { Button, ErrorText, Input, Select, Spinner } from './ui';
 const POLL_MS = 5_000;
 const PAGE = 100;
 
+/** Message filters: label -> text the message must contain ('' = no filter). */
+const MESSAGE_FILTERS = [
+  { label: 'All messages', text: '' },
+  {
+    label: 'Form messages',
+    text: 'Hello! I filled in your form and would like to know more about your business.',
+  },
+];
+
 const STATUS: Record<LogStatus, { label: string; className: string }> = {
   received: { label: 'Received', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
   duplicate: { label: 'Duplicate', className: 'bg-slate-100 text-slate-600 ring-slate-200' },
@@ -87,12 +96,14 @@ function Row({ log, open, onToggle }: { log: WebhookLog; open: boolean; onToggle
 export function LogView({ ws }: { ws: Workspace }) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'' | LogStatus>('');
+  const [text, setText] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
   const q = search.trim();
+  const filtered = Boolean(q || status || text);
 
   const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ['logs', ws.id, q, status],
-    queryFn: ({ pageParam }) => endpoints.logs(ws.id, { q, status, before: pageParam, limit: PAGE }),
+    queryKey: ['logs', ws.id, q, status, text],
+    queryFn: ({ pageParam }) => endpoints.logs(ws.id, { q, status, text, before: pageParam, limit: PAGE }),
     initialPageParam: null as number | null,
     getNextPageParam: (last) => (last.length === PAGE ? last[last.length - 1]!.id : undefined),
     refetchInterval: POLL_MS,
@@ -125,6 +136,13 @@ export function LogView({ ws }: { ws: Workspace }) {
             </option>
           ))}
         </Select>
+        <Select value={text} onChange={(e) => setText(e.target.value)} className="sm:w-48">
+          {MESSAGE_FILTERS.map((f) => (
+            <option key={f.label} value={f.text}>
+              {f.label}
+            </option>
+          ))}
+        </Select>
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
           <Input
@@ -143,8 +161,8 @@ export function LogView({ ws }: { ws: Workspace }) {
       ) : !logs.length ? (
         <div className="rounded-xl border border-line bg-white px-6 py-16 text-center">
           <ScrollText className="mx-auto size-8 text-slate-400" />
-          <p className="mt-3 font-medium text-slate-800">{q || status ? 'No logs match' : 'Nothing received yet'}</p>
-          {!q && !status && (
+          <p className="mt-3 font-medium text-slate-800">{filtered ? 'No logs match' : 'Nothing received yet'}</p>
+          {!filtered && (
             <p className="mx-auto mt-1 max-w-md text-sm text-muted">
               If customers are messaging this number, check that the webhook URL from Setup is pasted into this GetGabs
               account. Every request to it shows up here.
